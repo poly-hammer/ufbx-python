@@ -3,6 +3,7 @@ ufbx-python setup script - Cython implementation
 """
 
 import os
+import sys
 
 import numpy as np
 from Cython.Build import cythonize
@@ -29,6 +30,11 @@ def get_long_description():
 
 
 # Define Cython extension
+if sys.platform == "win32":
+    _optimize_args = ["/O2"]
+else:
+    _optimize_args = ["-O3"]
+
 extensions = [
     Extension(
         "ufbx._ufbx",
@@ -44,7 +50,7 @@ extensions = [
             np.get_include(),
         ],
         define_macros=[("NPY_NO_DEPRECATED_API", "NPY_1_7_API_VERSION")],
-        extra_compile_args=["-O3"],
+        extra_compile_args=_optimize_args,
     )
 ]
 

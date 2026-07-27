@@ -1,0 +1,37 @@
+name: Build Wheels
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+jobs:
+  build_wheels:
+    name: Build wheels on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build wheels
+        uses: pypa/cibuildwheel@v2.23
+        env:
+          # Blender 4.5 ships Python 3.11; Blender 5.x ships Python 3.13.
+          CIBW_BUILD: "cp311-* cp313-*"
+          CIBW_SKIP: "*-musllinux_*"
+          CIBW_ARCHS_MACOS: "x86_64 arm64"
+          CIBW_ARCHS_LINUX: "x86_64"
+          CIBW_ARCHS_WINDOWS: "AMD64"
+          CIBW_TEST_REQUIRES: "pytest numpy"
+          CIBW_TEST_COMMAND: "pytest {project}/tests -q"
+
+      - name: Store wheels
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheels-${{ matrix.os }}
+          path: ./wheelhouse/*.whl
