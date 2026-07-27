@@ -37,4 +37,7 @@ coverage.xml
 # Test fixtures (large binary FBX files)
 tests/fixtures/*.fbx
 tests/fixtures/*.glb
+# Exception: small fixtures required by the test suite are committed so CI
+# (including cibuildwheel test runs) actually executes those tests.
+!tests/fixtures/maya_game_sausage_*.fbx
 ufbx_cffi_backup/
