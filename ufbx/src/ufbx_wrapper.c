@@ -1094,3 +1094,184 @@ double ufbx_wrapper_constraint_get_weight(const ufbx_constraint *constraint) {
 bool ufbx_wrapper_constraint_get_active(const ufbx_constraint *constraint) {
     return constraint ? constraint->active : false;
 }
+
+// Animation evaluation & baking
+
+static char* ufbx_wrapper_copy_error(const ufbx_error *error) {
+    size_t len = error->description.length;
+    char *msg = (char*)malloc(len + 1);
+    if (msg) {
+        memcpy(msg, error->description.data, len);
+        msg[len] = '\0';
+    }
+    return msg;
+}
+
+ufbx_scene* ufbx_wrapper_load_file_opts(const char *filename, bool ignore_geometry, bool ignore_embedded, char **error_msg) {
+    ufbx_load_opts opts = {0};
+    opts.ignore_geometry = ignore_geometry;
+    opts.ignore_embedded = ignore_embedded;
+    opts.ignore_missing_external_files = true;
+
+    ufbx_error error;
+    ufbx_scene *scene = ufbx_load_file(filename, &opts, &error);
+    if (!scene && error_msg) {
+        *error_msg = ufbx_wrapper_copy_error(&error);
+    }
+    return scene;
+}
+
+uint32_t ufbx_wrapper_node_get_typed_id(const ufbx_node *node) {
+    return node ? node->typed_id : 0;
+}
+
+ufbx_anim* ufbx_wrapper_scene_get_default_anim(const ufbx_scene *scene) {
+    return scene ? scene->anim : NULL;
+}
+
+ufbx_anim* ufbx_wrapper_anim_stack_get_anim(const ufbx_anim_stack *anim_stack) {
+    return anim_stack ? anim_stack->anim : NULL;
+}
+
+double ufbx_wrapper_evaluate_curve(const ufbx_anim_curve *anim_curve, double time, double default_value) {
+    if (!anim_curve) return default_value;
+    return ufbx_evaluate_curve(anim_curve, time, default_value);
+}
+
+void ufbx_wrapper_evaluate_transform(const ufbx_anim *anim, const ufbx_node *node, double time,
+                                     double *translation3, double *rotation4, double *scale3) {
+    ufbx_transform transform = ufbx_evaluate_transform(anim, node, time);
+    translation3[0] = transform.translation.x;
+    translation3[1] = transform.translation.y;
+    translation3[2] = transform.translation.z;
+    rotation4[0] = transform.rotation.x;
+    rotation4[1] = transform.rotation.y;
+    rotation4[2] = transform.rotation.z;
+    rotation4[3] = transform.rotation.w;
+    scale3[0] = transform.scale.x;
+    scale3[1] = transform.scale.y;
+    scale3[2] = transform.scale.z;
+}
+
+ufbx_baked_anim* ufbx_wrapper_bake_anim(const ufbx_scene *scene, const ufbx_anim *anim,
+                                        double resample_rate, bool trim_start_time, char **error_msg) {
+    if (!scene) return NULL;
+
+    ufbx_bake_opts opts = {0};
+    opts.resample_rate = resample_rate;
+    opts.trim_start_time = trim_start_time;
+
+    ufbx_error error;
+    ufbx_baked_anim *bake = ufbx_bake_anim(scene, anim ? anim : scene->anim, &opts, &error);
+    if (!bake && error_msg) {
+        *error_msg = ufbx_wrapper_copy_error(&error);
+    }
+    return bake;
+}
+
+void ufbx_wrapper_free_baked_anim(ufbx_baked_anim *bake) {
+    if (bake) {
+        ufbx_free_baked_anim(bake);
+    }
+}
+
+double ufbx_wrapper_baked_anim_get_playback_time_begin(const ufbx_baked_anim *bake) {
+    return bake ? bake->playback_time_begin : 0.0;
+}
+
+double ufbx_wrapper_baked_anim_get_playback_time_end(const ufbx_baked_anim *bake) {
+    return bake ? bake->playback_time_end : 0.0;
+}
+
+double ufbx_wrapper_baked_anim_get_playback_duration(const ufbx_baked_anim *bake) {
+    return bake ? bake->playback_duration : 0.0;
+}
+
+double ufbx_wrapper_baked_anim_get_key_time_min(const ufbx_baked_anim *bake) {
+    return bake ? bake->key_time_min : 0.0;
+}
+
+double ufbx_wrapper_baked_anim_get_key_time_max(const ufbx_baked_anim *bake) {
+    return bake ? bake->key_time_max : 0.0;
+}
+
+size_t ufbx_wrapper_baked_anim_get_num_nodes(const ufbx_baked_anim *bake) {
+    return bake ? bake->nodes.count : 0;
+}
+
+static const ufbx_baked_node* ufbx_wrapper_get_baked_node(const ufbx_baked_anim *bake, size_t index) {
+    if (!bake || index >= bake->nodes.count) return NULL;
+    return &bake->nodes.data[index];
+}
+
+uint32_t ufbx_wrapper_baked_node_get_typed_id(const ufbx_baked_anim *bake, size_t index) {
+    const ufbx_baked_node *node = ufbx_wrapper_get_baked_node(bake, index);
+    return node ? node->typed_id : 0;
+}
+
+bool ufbx_wrapper_baked_node_get_constant_translation(const ufbx_baked_anim *bake, size_t index) {
+    const ufbx_baked_node *node = ufbx_wrapper_get_baked_node(bake, index);
+    return node ? node->constant_translation : false;
+}
+
+bool ufbx_wrapper_baked_node_get_constant_rotation(const ufbx_baked_anim *bake, size_t index) {
+    const ufbx_baked_node *node = ufbx_wrapper_get_baked_node(bake, index);
+    return node ? node->constant_rotation : false;
+}
+
+bool ufbx_wrapper_baked_node_get_constant_scale(const ufbx_baked_anim *bake, size_t index) {
+    const ufbx_baked_node *node = ufbx_wrapper_get_baked_node(bake, index);
+    return node ? node->constant_scale : false;
+}
+
+size_t ufbx_wrapper_baked_node_get_num_translation_keys(const ufbx_baked_anim *bake, size_t index) {
+    const ufbx_baked_node *node = ufbx_wrapper_get_baked_node(bake, index);
+    return node ? node->translation_keys.count : 0;
+}
+
+size_t ufbx_wrapper_baked_node_get_num_rotation_keys(const ufbx_baked_anim *bake, size_t index) {
+    const ufbx_baked_node *node = ufbx_wrapper_get_baked_node(bake, index);
+    return node ? node->rotation_keys.count : 0;
+}
+
+size_t ufbx_wrapper_baked_node_get_num_scale_keys(const ufbx_baked_anim *bake, size_t index) {
+    const ufbx_baked_node *node = ufbx_wrapper_get_baked_node(bake, index);
+    return node ? node->scale_keys.count : 0;
+}
+
+void ufbx_wrapper_baked_node_get_translation_keys(const ufbx_baked_anim *bake, size_t index, double *times, double *values3) {
+    const ufbx_baked_node *node = ufbx_wrapper_get_baked_node(bake, index);
+    if (!node) return;
+    for (size_t i = 0; i < node->translation_keys.count; i++) {
+        const ufbx_baked_vec3 *key = &node->translation_keys.data[i];
+        times[i] = key->time;
+        values3[i * 3 + 0] = key->value.x;
+        values3[i * 3 + 1] = key->value.y;
+        values3[i * 3 + 2] = key->value.z;
+    }
+}
+
+void ufbx_wrapper_baked_node_get_rotation_keys(const ufbx_baked_anim *bake, size_t index, double *times, double *values4) {
+    const ufbx_baked_node *node = ufbx_wrapper_get_baked_node(bake, index);
+    if (!node) return;
+    for (size_t i = 0; i < node->rotation_keys.count; i++) {
+        const ufbx_baked_quat *key = &node->rotation_keys.data[i];
+        times[i] = key->time;
+        values4[i * 4 + 0] = key->value.x;
+        values4[i * 4 + 1] = key->value.y;
+        values4[i * 4 + 2] = key->value.z;
+        values4[i * 4 + 3] = key->value.w;
+    }
+}
+
+void ufbx_wrapper_baked_node_get_scale_keys(const ufbx_baked_anim *bake, size_t index, double *times, double *values3) {
+    const ufbx_baked_node *node = ufbx_wrapper_get_baked_node(bake, index);
+    if (!node) return;
+    for (size_t i = 0; i < node->scale_keys.count; i++) {
+        const ufbx_baked_vec3 *key = &node->scale_keys.data[i];
+        times[i] = key->time;
+        values3[i * 3 + 0] = key->value.x;
+        values3[i * 3 + 1] = key->value.y;
+        values3[i * 3 + 2] = key->value.z;
+    }
+}

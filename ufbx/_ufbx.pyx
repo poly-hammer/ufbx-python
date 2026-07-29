@@ -389,6 +389,10 @@ cdef extern from "ufbx-c/ufbx.h":
         pass
     ctypedef struct ufbx_constraint:
         pass
+    ctypedef struct ufbx_anim:
+        pass
+    ctypedef struct ufbx_baked_anim:
+        pass
 
     # Find functions from ufbx
     ufbx_node* ufbx_find_node(const ufbx_scene *scene, const char *name)
@@ -585,6 +589,32 @@ cdef extern from "ufbx_wrapper.h":
     int ufbx_wrapper_constraint_get_type(const ufbx_constraint *constraint)
     double ufbx_wrapper_constraint_get_weight(const ufbx_constraint *constraint)
     bint ufbx_wrapper_constraint_get_active(const ufbx_constraint *constraint)
+
+    # Animation evaluation & baking
+    ufbx_scene* ufbx_wrapper_load_file_opts(const char *filename, bint ignore_geometry, bint ignore_embedded, char **error_msg)
+    uint32_t ufbx_wrapper_node_get_typed_id(const ufbx_node *node)
+    ufbx_anim* ufbx_wrapper_scene_get_default_anim(const ufbx_scene *scene)
+    ufbx_anim* ufbx_wrapper_anim_stack_get_anim(const ufbx_anim_stack *anim_stack)
+    double ufbx_wrapper_evaluate_curve(const ufbx_anim_curve *anim_curve, double time, double default_value)
+    void ufbx_wrapper_evaluate_transform(const ufbx_anim *anim, const ufbx_node *node, double time, double *translation3, double *rotation4, double *scale3)
+    ufbx_baked_anim* ufbx_wrapper_bake_anim(const ufbx_scene *scene, const ufbx_anim *anim, double resample_rate, bint trim_start_time, char **error_msg)
+    void ufbx_wrapper_free_baked_anim(ufbx_baked_anim *bake)
+    double ufbx_wrapper_baked_anim_get_playback_time_begin(const ufbx_baked_anim *bake)
+    double ufbx_wrapper_baked_anim_get_playback_time_end(const ufbx_baked_anim *bake)
+    double ufbx_wrapper_baked_anim_get_playback_duration(const ufbx_baked_anim *bake)
+    double ufbx_wrapper_baked_anim_get_key_time_min(const ufbx_baked_anim *bake)
+    double ufbx_wrapper_baked_anim_get_key_time_max(const ufbx_baked_anim *bake)
+    size_t ufbx_wrapper_baked_anim_get_num_nodes(const ufbx_baked_anim *bake)
+    uint32_t ufbx_wrapper_baked_node_get_typed_id(const ufbx_baked_anim *bake, size_t index)
+    bint ufbx_wrapper_baked_node_get_constant_translation(const ufbx_baked_anim *bake, size_t index)
+    bint ufbx_wrapper_baked_node_get_constant_rotation(const ufbx_baked_anim *bake, size_t index)
+    bint ufbx_wrapper_baked_node_get_constant_scale(const ufbx_baked_anim *bake, size_t index)
+    size_t ufbx_wrapper_baked_node_get_num_translation_keys(const ufbx_baked_anim *bake, size_t index)
+    size_t ufbx_wrapper_baked_node_get_num_rotation_keys(const ufbx_baked_anim *bake, size_t index)
+    size_t ufbx_wrapper_baked_node_get_num_scale_keys(const ufbx_baked_anim *bake, size_t index)
+    void ufbx_wrapper_baked_node_get_translation_keys(const ufbx_baked_anim *bake, size_t index, double *times, double *values3)
+    void ufbx_wrapper_baked_node_get_rotation_keys(const ufbx_baked_anim *bake, size_t index, double *times, double *values4)
+    void ufbx_wrapper_baked_node_get_scale_keys(const ufbx_baked_anim *bake, size_t index, double *times, double *values3)
 
 
 # Python classes
@@ -1280,6 +1310,16 @@ cdef class AnimStack(Element):
         return ufbx_wrapper_anim_stack_get_name(self._anim_stack).decode('utf-8', errors='replace')
 
     @property
+    def anim(self):
+        """Animation descriptor for this stack (for evaluation/baking)"""
+        if self._scene._closed:
+            raise RuntimeError("Scene is closed")
+        cdef ufbx_anim* anim = ufbx_wrapper_anim_stack_get_anim(self._anim_stack)
+        if anim != NULL:
+            return Anim._create(self._scene, anim)
+        return None
+
+    @property
     def time_begin(self):
         """Start time of the animation"""
         if self._scene._closed:
@@ -1426,10 +1466,116 @@ cdef class AnimCurve(Element):
             raise RuntimeError("Scene is closed")
         return ufbx_wrapper_anim_curve_get_max_time(self._anim_curve)
 
+    def evaluate(self, double time, double default_value=0.0):
+        """Evaluate the curve value at a given time (seconds).
+
+        Args:
+            time: Time in seconds to sample the curve at.
+            default_value: Value returned when the curve has no keyframes.
+
+        Returns:
+            The interpolated curve value as a float.
+        """
+        if self._scene._closed:
+            raise RuntimeError("Scene is closed")
+        return ufbx_wrapper_evaluate_curve(self._anim_curve, time, default_value)
+
 
 cdef class Anim(Element):
-    """Animation definition (placeholder for future implementation)"""
-    pass
+    """Animation descriptor used for evaluation and baking.
+
+    Obtained from `Scene.anim` (default animation) or `AnimStack.anim`.
+    """
+    cdef Scene _scene
+    cdef ufbx_anim* _anim
+
+    @staticmethod
+    cdef Anim _create(Scene scene, ufbx_anim* anim):
+        """Internal factory method"""
+        cdef Anim obj = Anim.__new__(Anim)
+        obj._scene = scene
+        obj._anim = anim
+        return obj
+
+
+cdef class BakedNode:
+    """Baked transform animation for a single node.
+
+    Keyframe data is copied into numpy arrays on creation, so this object
+    stays valid after the scene or bake is freed.
+
+    Rotation quaternions use ufbx component order (x, y, z, w).
+    """
+    cdef readonly unsigned int typed_id
+    cdef readonly bint constant_translation
+    cdef readonly bint constant_rotation
+    cdef readonly bint constant_scale
+    cdef readonly object translation_times   # (N,) float64 seconds
+    cdef readonly object translation_values  # (N, 3) float64
+    cdef readonly object rotation_times      # (M,) float64 seconds
+    cdef readonly object rotation_values     # (M, 4) float64 (x, y, z, w)
+    cdef readonly object scale_times         # (K,) float64 seconds
+    cdef readonly object scale_values        # (K, 3) float64
+
+    @staticmethod
+    cdef BakedNode _create(ufbx_baked_anim* bake, size_t index):
+        """Internal factory method: eagerly copies key data out of the bake."""
+        cdef BakedNode obj = BakedNode.__new__(BakedNode)
+        obj.typed_id = ufbx_wrapper_baked_node_get_typed_id(bake, index)
+        obj.constant_translation = ufbx_wrapper_baked_node_get_constant_translation(bake, index)
+        obj.constant_rotation = ufbx_wrapper_baked_node_get_constant_rotation(bake, index)
+        obj.constant_scale = ufbx_wrapper_baked_node_get_constant_scale(bake, index)
+
+        cdef size_t num_t = ufbx_wrapper_baked_node_get_num_translation_keys(bake, index)
+        cdef size_t num_r = ufbx_wrapper_baked_node_get_num_rotation_keys(bake, index)
+        cdef size_t num_s = ufbx_wrapper_baked_node_get_num_scale_keys(bake, index)
+
+        cdef np.ndarray[np.float64_t, ndim=1] t_times = np.empty(num_t, dtype=np.float64)
+        cdef np.ndarray[np.float64_t, ndim=2] t_values = np.empty((num_t, 3), dtype=np.float64)
+        cdef np.ndarray[np.float64_t, ndim=1] r_times = np.empty(num_r, dtype=np.float64)
+        cdef np.ndarray[np.float64_t, ndim=2] r_values = np.empty((num_r, 4), dtype=np.float64)
+        cdef np.ndarray[np.float64_t, ndim=1] s_times = np.empty(num_s, dtype=np.float64)
+        cdef np.ndarray[np.float64_t, ndim=2] s_values = np.empty((num_s, 3), dtype=np.float64)
+
+        if num_t > 0:
+            ufbx_wrapper_baked_node_get_translation_keys(bake, index, <double*>t_times.data, <double*>t_values.data)
+        if num_r > 0:
+            ufbx_wrapper_baked_node_get_rotation_keys(bake, index, <double*>r_times.data, <double*>r_values.data)
+        if num_s > 0:
+            ufbx_wrapper_baked_node_get_scale_keys(bake, index, <double*>s_times.data, <double*>s_values.data)
+
+        obj.translation_times = t_times
+        obj.translation_values = t_values
+        obj.rotation_times = r_times
+        obj.rotation_values = r_values
+        obj.scale_times = s_times
+        obj.scale_values = s_values
+        return obj
+
+    def __repr__(self):
+        return (f"BakedNode(typed_id={self.typed_id}, "
+                f"translation_keys={len(self.translation_times)}, "
+                f"rotation_keys={len(self.rotation_times)}, "
+                f"scale_keys={len(self.scale_times)})")
+
+
+cdef class BakedAnim:
+    """Whole animation baked into resampled, linearly interpolable keyframes.
+
+    Produced by `Scene.bake_anim()`. All keyframe data lives in numpy arrays
+    owned by the contained `BakedNode` objects.
+    """
+    cdef readonly double playback_time_begin
+    cdef readonly double playback_time_end
+    cdef readonly double playback_duration
+    cdef readonly double key_time_min
+    cdef readonly double key_time_max
+    cdef readonly list nodes  # list[BakedNode]
+
+    def __repr__(self):
+        return (f"BakedAnim(nodes={len(self.nodes)}, "
+                f"playback_time_begin={self.playback_time_begin}, "
+                f"playback_time_end={self.playback_time_end})")
 
 
 cdef class SkinDeformer(Element):
@@ -1913,6 +2059,64 @@ cdef class Scene:
         return None
 
     @property
+    def anim(self):
+        """Default animation descriptor (all stacks/layers combined)"""
+        if self._closed:
+            raise RuntimeError("Scene is closed")
+        cdef ufbx_anim* anim = ufbx_wrapper_scene_get_default_anim(self._scene)
+        if anim != NULL:
+            return Anim._create(self, anim)
+        return None
+
+    def bake_anim(self, Anim anim=None, double resample_rate=30.0, bint trim_start_time=False):
+        """Bake an animation into resampled per-node keyframes.
+
+        Evaluates the full animation (all layers, property blending, and
+        transform inheritance) and returns linearly interpolable
+        translation/rotation/scale keys for every animated node.
+
+        Args:
+            anim: Animation descriptor to bake (e.g. ``AnimStack.anim``).
+                Defaults to the scene's default animation.
+            resample_rate: Samples per second used for non-linear animation.
+            trim_start_time: Shift keyframe times so the animation starts at 0.
+
+        Returns:
+            BakedAnim with a list of BakedNode entries holding numpy arrays.
+        """
+        if self._closed:
+            raise RuntimeError("Scene is closed")
+
+        cdef ufbx_anim* anim_ptr = NULL
+        if anim is not None:
+            anim_ptr = anim._anim
+
+        cdef char* error_msg = NULL
+        cdef ufbx_baked_anim* bake = ufbx_wrapper_bake_anim(self._scene, anim_ptr, resample_rate, trim_start_time, &error_msg)
+        if bake == NULL:
+            err = error_msg.decode('utf-8') if error_msg != NULL else "Unknown error"
+            if error_msg != NULL:
+                free(error_msg)
+            raise UfbxError(f"Failed to bake animation: {err}")
+
+        cdef BakedAnim result = BakedAnim.__new__(BakedAnim)
+        cdef size_t num_nodes = ufbx_wrapper_baked_anim_get_num_nodes(bake)
+        cdef list nodes = []
+        cdef size_t i
+        try:
+            for i in range(num_nodes):
+                nodes.append(BakedNode._create(bake, i))
+            result.playback_time_begin = ufbx_wrapper_baked_anim_get_playback_time_begin(bake)
+            result.playback_time_end = ufbx_wrapper_baked_anim_get_playback_time_end(bake)
+            result.playback_duration = ufbx_wrapper_baked_anim_get_playback_duration(bake)
+            result.key_time_min = ufbx_wrapper_baked_anim_get_key_time_min(bake)
+            result.key_time_max = ufbx_wrapper_baked_anim_get_key_time_max(bake)
+        finally:
+            ufbx_wrapper_free_baked_anim(bake)
+        result.nodes = nodes
+        return result
+
+    @property
     def axes(self):
         """Scene coordinate axes (right, up, front). Returns CoordinateAxes with CoordinateAxis members."""
         if self._closed:
@@ -2228,6 +2432,47 @@ cdef class Node(Element):
         if self._scene._closed:
             raise RuntimeError("Scene is closed")
         return ufbx_wrapper_node_is_root(self._node)
+
+    @property
+    def typed_id(self):
+        """Index of this node in Scene.nodes (matches BakedNode.typed_id)"""
+        if self._scene._closed:
+            raise RuntimeError("Scene is closed")
+        return ufbx_wrapper_node_get_typed_id(self._node)
+
+    def evaluate_transform(self, double time, Anim anim=None):
+        """Evaluate this node's local transform at a given time (seconds).
+
+        Args:
+            time: Time in seconds to evaluate the animation at.
+            anim: Animation descriptor to evaluate. Defaults to the scene's
+                default animation.
+
+        Returns:
+            Transform with translation (Vec3), rotation (Quat, x/y/z/w) and
+            scale (Vec3) relative to the node's parent.
+        """
+        if self._scene._closed:
+            raise RuntimeError("Scene is closed")
+
+        cdef ufbx_anim* anim_ptr
+        if anim is not None:
+            anim_ptr = anim._anim
+        else:
+            anim_ptr = ufbx_wrapper_scene_get_default_anim(self._scene._scene)
+        if anim_ptr == NULL:
+            raise UfbxError("No animation available to evaluate")
+
+        cdef double translation[3]
+        cdef double rotation[4]
+        cdef double scale[3]
+        ufbx_wrapper_evaluate_transform(anim_ptr, self._node, time, translation, rotation, scale)
+
+        cdef Transform transform = Transform()
+        transform.translation = Vec3(translation[0], translation[1], translation[2])
+        transform.rotation = Quat(rotation[0], rotation[1], rotation[2], rotation[3])
+        transform.scale = Vec3(scale[0], scale[1], scale[2])
+        return transform
 
     @property
     def world_transform(self):
@@ -3448,11 +3693,14 @@ cdef class Material(Element):
 
 
 # Module-level functions
-def load_file(filename):
+def load_file(filename, ignore_geometry=False, ignore_embedded=False):
     """Load FBX file and return Scene object
 
     Args:
         filename: Path to FBX file
+        ignore_geometry: Skip loading geometry data (vertices, indices, etc.)
+            for fast animation/skeleton-only loads.
+        ignore_embedded: Skip loading embedded content (textures, etc.).
 
     Returns:
         Scene object
@@ -3465,7 +3713,11 @@ def load_file(filename):
 
     cdef char* error_msg = NULL
     cdef bytes filename_bytes = filename.encode('utf-8')
-    cdef ufbx_scene* scene = ufbx_wrapper_load_file(filename_bytes, &error_msg)
+    cdef ufbx_scene* scene
+    if ignore_geometry or ignore_embedded:
+        scene = ufbx_wrapper_load_file_opts(filename_bytes, ignore_geometry, ignore_embedded, &error_msg)
+    else:
+        scene = ufbx_wrapper_load_file(filename_bytes, &error_msg)
 
     if scene == NULL:
         err = error_msg.decode('utf-8') if error_msg != NULL else "Unknown error"

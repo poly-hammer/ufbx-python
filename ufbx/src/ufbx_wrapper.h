@@ -287,6 +287,48 @@ int ufbx_wrapper_constraint_get_type(const ufbx_constraint *constraint);
 double ufbx_wrapper_constraint_get_weight(const ufbx_constraint *constraint);
 bool ufbx_wrapper_constraint_get_active(const ufbx_constraint *constraint);
 
+// Animation evaluation & baking
+typedef struct ufbx_anim ufbx_anim;
+typedef struct ufbx_baked_anim ufbx_baked_anim;
+
+// Scene loading with content filtering (skip geometry/embedded data for fast animation-only loads)
+ufbx_scene* ufbx_wrapper_load_file_opts(const char *filename, bool ignore_geometry, bool ignore_embedded, char **error_msg);
+
+// Node identity (index into ufbx_scene.nodes[])
+uint32_t ufbx_wrapper_node_get_typed_id(const ufbx_node *node);
+
+// Anim handles
+ufbx_anim* ufbx_wrapper_scene_get_default_anim(const ufbx_scene *scene);
+ufbx_anim* ufbx_wrapper_anim_stack_get_anim(const ufbx_anim_stack *anim_stack);
+
+// Curve / transform evaluation
+double ufbx_wrapper_evaluate_curve(const ufbx_anim_curve *anim_curve, double time, double default_value);
+void ufbx_wrapper_evaluate_transform(const ufbx_anim *anim, const ufbx_node *node, double time,
+                                     double *translation3, double *rotation4, double *scale3);
+
+// Whole-animation baking (resampled linear keys per node)
+ufbx_baked_anim* ufbx_wrapper_bake_anim(const ufbx_scene *scene, const ufbx_anim *anim,
+                                        double resample_rate, bool trim_start_time, char **error_msg);
+void ufbx_wrapper_free_baked_anim(ufbx_baked_anim *bake);
+double ufbx_wrapper_baked_anim_get_playback_time_begin(const ufbx_baked_anim *bake);
+double ufbx_wrapper_baked_anim_get_playback_time_end(const ufbx_baked_anim *bake);
+double ufbx_wrapper_baked_anim_get_playback_duration(const ufbx_baked_anim *bake);
+double ufbx_wrapper_baked_anim_get_key_time_min(const ufbx_baked_anim *bake);
+double ufbx_wrapper_baked_anim_get_key_time_max(const ufbx_baked_anim *bake);
+size_t ufbx_wrapper_baked_anim_get_num_nodes(const ufbx_baked_anim *bake);
+
+// Baked node access (index into baked node list, values copied into caller buffers)
+uint32_t ufbx_wrapper_baked_node_get_typed_id(const ufbx_baked_anim *bake, size_t index);
+bool ufbx_wrapper_baked_node_get_constant_translation(const ufbx_baked_anim *bake, size_t index);
+bool ufbx_wrapper_baked_node_get_constant_rotation(const ufbx_baked_anim *bake, size_t index);
+bool ufbx_wrapper_baked_node_get_constant_scale(const ufbx_baked_anim *bake, size_t index);
+size_t ufbx_wrapper_baked_node_get_num_translation_keys(const ufbx_baked_anim *bake, size_t index);
+size_t ufbx_wrapper_baked_node_get_num_rotation_keys(const ufbx_baked_anim *bake, size_t index);
+size_t ufbx_wrapper_baked_node_get_num_scale_keys(const ufbx_baked_anim *bake, size_t index);
+void ufbx_wrapper_baked_node_get_translation_keys(const ufbx_baked_anim *bake, size_t index, double *times, double *values3);
+void ufbx_wrapper_baked_node_get_rotation_keys(const ufbx_baked_anim *bake, size_t index, double *times, double *values4);
+void ufbx_wrapper_baked_node_get_scale_keys(const ufbx_baked_anim *bake, size_t index, double *times, double *values3);
+
 #ifdef __cplusplus
 }
 #endif
