@@ -48,7 +48,7 @@ jobs:
       - name: Install uv and Python
         uses: astral-sh/setup-uv@v7
         with:
-          python-version: "3.9"
+          python-version: "3.13"
 
       - name: Create virtual environment
         run: |
