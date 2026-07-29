@@ -5,15 +5,11 @@ test data (3 joints, ~0.8s clip).
 """
 
 import os
-import sys
 
 import numpy as np
 import pytest
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
 import ufbx
-
 
 FIXTURE = os.path.join(os.path.dirname(__file__), "fixtures", "maya_game_sausage_7500_binary_wiggle.fbx")
 

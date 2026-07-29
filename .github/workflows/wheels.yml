@@ -28,7 +28,9 @@ jobs:
           CIBW_ARCHS_LINUX: "x86_64"
           CIBW_ARCHS_WINDOWS: "AMD64"
           CIBW_TEST_REQUIRES: "pytest numpy"
-          CIBW_TEST_COMMAND: "pytest {project}/tests -q"
+          # Import tests without prepending the checkout, so they exercise the
+          # repaired wheel installed by cibuildwheel rather than /project/ufbx.
+          CIBW_TEST_COMMAND: "pytest --import-mode=importlib {project}/tests -q"
 
       - name: Store wheels
         uses: actions/upload-artifact@v4

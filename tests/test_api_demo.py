@@ -3,12 +3,6 @@
 Demo script showing all implemented ufbx Python binding features
 """
 
-import os
-import sys
-
-# Add project to path
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
 import ufbx
 
 
