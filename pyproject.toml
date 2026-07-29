@@ -1,9 +1,8 @@
 [build-system]
 # Build against NumPy 2 headers: the resulting binaries stay ABI-compatible with
 # NumPy 1.19.5+ runtimes (Blender 4.5) as well as NumPy 2.x (Blender 5.x, CI).
-# 2.1.3 is the newest release shipping manylinux2014 wheels for both cp311 and
-# cp313; anything newer is manylinux_2_28-only and forces a source build that
-# the manylinux2014 image's GCC 10.2 cannot complete.
+# Pinned so the ABI baseline is reproducible; 2.1.3 ships wheels for every
+# target Python and platform, so no build ever falls back to a NumPy sdist.
 requires = [
     "setuptools>=45",
     "wheel",
@@ -66,6 +65,10 @@ test-command = "pytest --import-mode=importlib {project}/tests -q"
 
 [tool.cibuildwheel.linux]
 archs = ["x86_64"]
+# NumPy ships manylinux_2_28 wheels from 2.2 on, so the default manylinux2014
+# image cannot install Blender 5.x's NumPy without a source build its GCC 10.2
+# is too old for. Blender itself requires glibc 2.28+, so this costs nothing.
+manylinux-x86_64-image = "manylinux_2_28"
 
 [tool.cibuildwheel.macos]
 archs = ["x86_64", "arm64"]
