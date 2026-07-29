@@ -1,11 +1,14 @@
 [build-system]
 # Build against NumPy 2 headers: the resulting binaries stay ABI-compatible with
 # NumPy 1.19.5+ runtimes (Blender 4.5) as well as NumPy 2.x (Blender 5.x, CI).
+# 2.1.3 is the newest release shipping manylinux2014 wheels for both cp311 and
+# cp313; anything newer is manylinux_2_28-only and forces a source build that
+# the manylinux2014 image's GCC 10.2 cannot complete.
 requires = [
     "setuptools>=45",
     "wheel",
     "Cython>=3.0.0",
-    "numpy>=2.0.0",
+    "numpy==2.1.3",
 ]
 build-backend = "setuptools.build_meta"
 
