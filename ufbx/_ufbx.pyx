@@ -592,6 +592,7 @@ cdef extern from "ufbx_wrapper.h":
 
     # Animation evaluation & baking
     ufbx_scene* ufbx_wrapper_load_file_opts(const char *filename, bint ignore_geometry, bint ignore_embedded, char **error_msg)
+    ufbx_scene* ufbx_wrapper_load_memory_opts(const void *data, size_t data_size, bint ignore_geometry, bint ignore_embedded, char **error_msg)
     uint32_t ufbx_wrapper_node_get_typed_id(const ufbx_node *node)
     ufbx_anim* ufbx_wrapper_scene_get_default_anim(const ufbx_scene *scene)
     ufbx_anim* ufbx_wrapper_anim_stack_get_anim(const ufbx_anim_stack *anim_stack)
@@ -2007,8 +2008,8 @@ cdef class Scene:
         return load_file(filename)
 
     @classmethod
-    def load_memory(cls, data):
-        return load_memory(data)
+    def load_memory(cls, data, ignore_geometry=False, ignore_embedded=False):
+        return load_memory(data, ignore_geometry=ignore_geometry, ignore_embedded=ignore_embedded)
 
     @property
     def metadata(self):
@@ -3731,8 +3732,34 @@ def load_file(filename, ignore_geometry=False, ignore_embedded=False):
     return py_scene
 
 
-def load_memory(data):
-    """Load FBX from memory buffer."""
-    if data is None or len(data) == 0:
+def load_memory(data, ignore_geometry=False, ignore_embedded=False):
+    """Load FBX from a buffer and return a Scene object."""
+    if data is None:
         raise UfbxError("Failed to load FBX from memory")
-    raise UfbxError("Failed to load FBX from memory")
+
+    try:
+        buffer = memoryview(data).tobytes()
+    except TypeError as error:
+        raise TypeError("data must support the buffer protocol") from error
+    if len(buffer) == 0:
+        raise UfbxError("Failed to load FBX from memory")
+
+    cdef char* error_msg = NULL
+    cdef const char* buffer_data = buffer
+    cdef ufbx_scene* scene = ufbx_wrapper_load_memory_opts(
+        <const void*>buffer_data,
+        len(buffer),
+        ignore_geometry,
+        ignore_embedded,
+        &error_msg,
+    )
+    if scene == NULL:
+        err = error_msg.decode('utf-8') if error_msg != NULL else "Unknown error"
+        if error_msg != NULL:
+            free(error_msg)
+        raise UfbxError(f"Failed to load FBX from memory: {err}")
+
+    cdef Scene py_scene = Scene.__new__(Scene)
+    py_scene._scene = scene
+    py_scene._closed = False
+    return py_scene

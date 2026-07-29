@@ -1121,6 +1121,21 @@ ufbx_scene* ufbx_wrapper_load_file_opts(const char *filename, bool ignore_geomet
     return scene;
 }
 
+ufbx_scene* ufbx_wrapper_load_memory_opts(const void *data, size_t data_size, bool ignore_geometry,
+                                          bool ignore_embedded, char **error_msg) {
+    ufbx_load_opts opts = {0};
+    opts.ignore_geometry = ignore_geometry;
+    opts.ignore_embedded = ignore_embedded;
+    opts.ignore_missing_external_files = true;
+
+    ufbx_error error;
+    ufbx_scene *scene = ufbx_load_memory(data, data_size, &opts, &error);
+    if (!scene && error_msg) {
+        *error_msg = ufbx_wrapper_copy_error(&error);
+    }
+    return scene;
+}
+
 uint32_t ufbx_wrapper_node_get_typed_id(const ufbx_node *node) {
     return node ? node->typed_id : 0;
 }

@@ -293,6 +293,8 @@ typedef struct ufbx_baked_anim ufbx_baked_anim;
 
 // Scene loading with content filtering (skip geometry/embedded data for fast animation-only loads)
 ufbx_scene* ufbx_wrapper_load_file_opts(const char *filename, bool ignore_geometry, bool ignore_embedded, char **error_msg);
+ufbx_scene* ufbx_wrapper_load_memory_opts(const void *data, size_t data_size, bool ignore_geometry,
+                                          bool ignore_embedded, char **error_msg);
 
 // Node identity (index into ufbx_scene.nodes[])
 uint32_t ufbx_wrapper_node_get_typed_id(const ufbx_node *node);

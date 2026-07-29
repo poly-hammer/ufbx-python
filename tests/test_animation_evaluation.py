@@ -35,6 +35,16 @@ class TestAnimOnlyLoading:
         assert "joint2" in names
         assert "joint3" in names
 
+    def test_memory_load_matches_file_load(self, scene):
+        """Buffer loading preserves animation hierarchy and filtering options."""
+        with open(FIXTURE, "rb") as fixture_file:
+            data = fixture_file.read()
+        with ufbx.load_memory(data, ignore_geometry=True, ignore_embedded=True) as memory_scene:
+            assert [node.name for node in memory_scene.nodes] == [node.name for node in scene.nodes]
+            assert len(memory_scene.meshes) == len(scene.meshes)
+            assert all(mesh.num_vertices == 0 for mesh in memory_scene.meshes)
+            assert len(memory_scene.anim_stacks) == len(scene.anim_stacks)
+
     def test_anim_stack_exposes_anim(self, scene):
         stacks = scene.anim_stacks
         assert len(stacks) >= 1
