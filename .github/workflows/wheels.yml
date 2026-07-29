@@ -20,17 +20,6 @@ jobs:
 
       - name: Build wheels
         uses: pypa/cibuildwheel@v2.23
-        env:
-          # Blender 4.5 ships Python 3.11; Blender 5.x ships Python 3.13.
-          CIBW_BUILD: "cp311-* cp313-*"
-          CIBW_SKIP: "*-musllinux_*"
-          CIBW_ARCHS_MACOS: "x86_64 arm64"
-          CIBW_ARCHS_LINUX: "x86_64"
-          CIBW_ARCHS_WINDOWS: "AMD64"
-          CIBW_TEST_REQUIRES: "pytest numpy"
-          # Import tests without prepending the checkout, so they exercise the
-          # repaired wheel installed by cibuildwheel rather than /project/ufbx.
-          CIBW_TEST_COMMAND: "pytest --import-mode=importlib {project}/tests -q"
 
       - name: Store wheels
         uses: actions/upload-artifact@v4

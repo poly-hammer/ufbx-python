@@ -1,10 +1,11 @@
 [build-system]
+# Build against NumPy 2 headers: the resulting binaries stay ABI-compatible with
+# NumPy 1.19.5+ runtimes (Blender 4.5) as well as NumPy 2.x (Blender 5.x, CI).
 requires = [
     "setuptools>=45",
     "wheel",
     "Cython>=3.0.0",
-    "numpy==1.26.4; python_version < '3.13'",
-    "numpy==2.3.4; python_version >= '3.13'",
+    "numpy>=2.0.0",
 ]
 build-backend = "setuptools.build_meta"
 
@@ -48,6 +49,35 @@ Documentation = "https://github.com/popomore/ufbx-python#readme"
 
 [tool.setuptools.dynamic]
 version = {attr = "ufbx.__version__"}
+
+# =============================================================================
+# cibuildwheel Configuration
+# =============================================================================
+[tool.cibuildwheel]
+# Blender 4.5 ships Python 3.11; Blender 5.x ships Python 3.13.
+build = "cp311-* cp313-*"
+skip = "*-musllinux_*"
+# importlib mode keeps the checkout off sys.path so tests exercise the
+# installed wheel rather than the unbuilt ufbx/ source package.
+test-command = "pytest --import-mode=importlib {project}/tests -q"
+
+[tool.cibuildwheel.linux]
+archs = ["x86_64"]
+
+[tool.cibuildwheel.macos]
+archs = ["x86_64", "arm64"]
+
+[tool.cibuildwheel.windows]
+archs = ["AMD64"]
+
+# Test each wheel against the NumPy that its target Blender actually bundles.
+[[tool.cibuildwheel.overrides]]
+select = "cp311-*"
+test-requires = ["pytest", "numpy==1.26.4"]
+
+[[tool.cibuildwheel.overrides]]
+select = "cp313-*"
+test-requires = ["pytest", "numpy==2.3.4"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
